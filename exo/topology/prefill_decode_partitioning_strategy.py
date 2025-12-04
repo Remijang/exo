@@ -15,7 +15,7 @@ class PrefillDecodePartitioningStrategy(PartitioningStrategy):
     nodes.sort(key=lambda x: (x[1].flops.fp16, x[0]), reverse=True)
     total_memory = sum(node[1].memory for node in nodes)
     partitions = []
-    start = 1
+    start = 0
     for node in nodes:
       end = round(start + (node[1].memory/total_memory), 5)
       partitions.append(Partition(node[0], start, end))
