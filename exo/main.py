@@ -18,6 +18,7 @@ from exo.networking.udp.udp_discovery import UDPDiscovery
 from exo.networking.tailscale.tailscale_discovery import TailscaleDiscovery
 from exo.networking.grpc.grpc_peer_handle import GRPCPeerHandle
 from exo.topology.ring_memory_weighted_partitioning_strategy import RingMemoryWeightedPartitioningStrategy
+from exo.topology.prefill_decode_partitioning_strategy import PrefillDecodePartitioningStrategy
 from exo.api import ChatGPTAPI
 from exo.download.shard_download import ShardDownloader, NoopShardDownloader
 from exo.download.download_progress import RepoProgressEvent
@@ -91,6 +92,7 @@ parser.add_argument("--tailnet-name", type=str, default=None, help="Tailnet name
 parser.add_argument("--node-id-filter", type=str, default=None, help="Comma separated list of allowed node IDs (only for UDP and Tailscale discovery)")
 parser.add_argument("--interface-type-filter", type=str, default=None, help="Comma separated list of allowed interface types (only for UDP discovery)")
 parser.add_argument("--system-prompt", type=str, default=None, help="System prompt for the ChatGPT API")
+parser.add_argument("--partitioning-strategy", type=str, default="ring_memory_weighted", help="Partitioning strategy")
 args = parser.parse_args()
 print(f"Selected inference engine: {args.inference_engine}")
 
@@ -161,13 +163,20 @@ elif args.discovery_module == "manual":
     raise ValueError(f"--discovery-config-path is required when using manual discovery. Please provide a path to a config json file.")
   discovery = ManualDiscovery(args.discovery_config_path, args.node_id, create_peer_handle=lambda peer_id, address, description, device_capabilities: GRPCPeerHandle(peer_id, address, description, device_capabilities))
 topology_viz = TopologyViz(chatgpt_api_endpoints=chatgpt_api_endpoints, web_chat_urls=web_chat_urls) if not args.disable_tui else None
+
+partitioning_strategy = None
+if args.partitioning_strategy == "prefill_decode":
+  partitioning_strategy = PrefillDecodePartitioningStrategy()
+else:
+  partitioning_strategy = RingMemoryWeightedPartitioningStrategy()
+
 node = Node(
   args.node_id,
   None,
   inference_engine,
   discovery,
   shard_downloader,
-  partitioning_strategy=RingMemoryWeightedPartitioningStrategy(),
+  partitioning_strategy=partitioning_strategy,
   max_generate_tokens=args.max_generate_tokens,
   topology_viz=topology_viz,
   default_sample_temperature=args.default_temp
