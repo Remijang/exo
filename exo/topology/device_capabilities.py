@@ -56,7 +56,7 @@ CHIP_FLOPS = {
   "Apple M3": DeviceFlops(fp32=3.55*TFLOPS, fp16=7.10*TFLOPS, int8=14.20*TFLOPS),
   "Apple M3 Pro": DeviceFlops(fp32=4.97*TFLOPS, fp16=9.94*TFLOPS, int8=19.88*TFLOPS),
   "Apple M3 Max": DeviceFlops(fp32=14.20*TFLOPS, fp16=28.40*TFLOPS, int8=56.80*TFLOPS),
-  "Apple M3 Ultra": DeviceFlops(fp32=54.26*TFLOPS, fp16=108.52*TFLOPS, int8=217.04*TFLOPS),
+  "Apple M3 Ultra": DeviceFlops(fp32=23.62*TFLOPS, fp16=25.97*TFLOPS, int8=0*TFLOPS),
   "Apple M4": DeviceFlops(fp32=4.26*TFLOPS, fp16=8.52*TFLOPS, int8=17.04*TFLOPS),
   "Apple M4 Pro": DeviceFlops(fp32=5.72*TFLOPS, fp16=11.44*TFLOPS, int8=22.88*TFLOPS),
   "Apple M4 Max": DeviceFlops(fp32=18.03*TFLOPS, fp16=36.07*TFLOPS, int8=72.14*TFLOPS),
@@ -120,7 +120,8 @@ CHIP_FLOPS = {
   "NVIDIA A800 80GB PCIE": DeviceFlops(fp32=19.5*TFLOPS, fp16=312.0*TFLOPS, int8=624.0*TFLOPS),
   "NVIDIA A100 80GB SXM": DeviceFlops(fp32=19.5*TFLOPS, fp16=312.0*TFLOPS, int8=624.0*TFLOPS),
   "NVIDIA A800 80GB SXM": DeviceFlops(fp32=19.5*TFLOPS, fp16=312.0*TFLOPS, int8=624.0*TFLOPS),
-  # ... add more devices if needed ...
+  # gb10
+  "NVIDIA GB10 128GB": DeviceFlops(fp32=19.49*TFLOPS, fp16=90.43*TFLOPS, int8=59.51*TFLOPS),
   ### AMD GPUs
   # RX 6000 series
   "AMD Radeon RX 6900 XT": DeviceFlops(fp32=23.04*TFLOPS, fp16=46.08*TFLOPS, int8=92.16*TFLOPS),
@@ -182,22 +183,31 @@ async def linux_device_capabilities() -> DeviceCapabilities:
   if Device.DEFAULT == "CUDA" or Device.DEFAULT == "NV" or Device.DEFAULT == "GPU":
     import pynvml
 
-    pynvml.nvmlInit()
-    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-    gpu_raw_name = pynvml.nvmlDeviceGetName(handle).upper()
-    gpu_name = gpu_raw_name.rsplit(" ", 1)[0] if gpu_raw_name.endswith("GB") else gpu_raw_name
-    gpu_memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    try:
+      pynvml.nvmlInit()
+      handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+      gpu_raw_name = pynvml.nvmlDeviceGetName(handle).upper()
+      gpu_name = gpu_raw_name.rsplit(" ", 1)[0] if gpu_raw_name.endswith("GB") else gpu_raw_name
+      gpu_memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
 
-    if DEBUG >= 2: print(f"NVIDIA device {gpu_name=} {gpu_memory_info=}")
+      if DEBUG >= 2: print(f"NVIDIA device {gpu_name=} {gpu_memory_info=}")
 
-    pynvml.nvmlShutdown()
+      pynvml.nvmlShutdown()
 
-    return DeviceCapabilities(
-      model=f"Linux Box ({gpu_name})",
-      chip=gpu_name,
-      memory=gpu_memory_info.total // 2**20,
-      flops=CHIP_FLOPS.get(gpu_name, DeviceFlops(fp32=0, fp16=0, int8=0)),
-    )
+      return DeviceCapabilities(
+        model=f"Linux Box ({gpu_name})",
+        chip=gpu_name,
+        memory=gpu_memory_info.total // 2**20,
+        flops=CHIP_FLOPS.get(gpu_name, DeviceFlops(fp32=0, fp16=0, int8=0)),
+      )
+    except:
+      gpu_name="NVIDIA GB10 128GB"
+      return DeviceCapabilities(
+        model=f"Linux Box ({gpu_name})",
+        chip=gpu_name,
+        memory=122508,
+        flops=CHIP_FLOPS.get(gpu_name, DeviceFlops(fp32=0, fp16=0, int8=0)),
+      )
   elif Device.DEFAULT == "AMD":
     import pyamdgpuinfo
 
