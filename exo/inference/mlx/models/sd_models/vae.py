@@ -8,7 +8,7 @@ import mlx.nn as nn
 
 from .unet import ResnetBlock2D, upsample_nearest
 from dataclasses import dataclass, field
-from exo.inference.shard import Shard
+from exo.inference.shard import Shard, TpAttr
 from typing import Tuple
 import inspect
 from ..base import IdentityBlock
@@ -31,7 +31,7 @@ class AutoencoderConfig:
 
 @dataclass
 class ModelArgs(AutoencoderConfig):
-    shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
+    shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0, TpAttr(0, 1)))
 
     def __post_init__(self):
         if isinstance(self.shard, dict):
@@ -133,7 +133,7 @@ class Encoder(nn.Module):
         layers_per_block: int = 2,
         resnet_groups: int = 32,
         layers_range: List[int] = [],
-        shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
+        shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0, TpAttr(0, 1)))
     ):
         super().__init__()
         self.layers_range = layers_range

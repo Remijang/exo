@@ -10,12 +10,12 @@ from mlx_lm.models.deepseek_v3 import (
   DeepseekV3DecoderLayer,
 )
 from .base import IdentityBlock
-from exo.inference.shard import Shard
+from exo.inference.shard import Shard, TpAttr
 
 
 @dataclass
 class ModelArgs(V3ModelArgs):
-  shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
+  shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0, TpAttr(0, 1)))
 
   def __post_init__(self):
     if isinstance(self.shard, Shard):

@@ -18,7 +18,7 @@ from .sd_models.clip import ModelArgs as CLIPArgs
 from .sd_models.unet import UNetConfig, UNetModel
 
 from dataclasses import dataclass, field
-from exo.inference.shard import Shard
+from exo.inference.shard import Shard, TpAttr
 
 @dataclass
 class DiffusionConfig:
@@ -124,6 +124,7 @@ class ShardConfig:
     start_layer:int
     end_layer:int
     n_layers:int
+    tp_attr: TpAttr
 
 @dataclass
 class StableDiffusionConfig:
@@ -140,7 +141,7 @@ class StableDiffusionConfig:
 
 @dataclass
 class ModelArgs(StableDiffusionConfig):
-    shard:Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
+    shard:Shard = field(default_factory=lambda: Shard("", 0, 0, 0, TpAttr(0, 1)))
 
     def __post_init__(self):
         if isinstance(self.shard, dict):
@@ -265,6 +266,7 @@ def model_shards(shard:ShardConfig):
     def create_shard(shard, model_ranges):
         start_layer = shard.start_layer
         end_layer = shard.end_layer
+        cur_tp_attr = shard.tp_attr
         
         shards = {}
         
@@ -277,10 +279,10 @@ def model_shards(shard:ShardConfig):
                 # Adjust the layers relative to the model's range
                 relative_start = overlap_start - range_start
                 relative_end = overlap_end - range_start
-                shards[model_name] = Shard(model_name, relative_start, relative_end, range_end - range_start)
+                shards[model_name] = Shard(model_name, relative_start, relative_end, range_end - range_start, cur_tp_attr)
             else:
                 # If no overlap, create a zero-layer shard
-                shards[model_name] = Shard(model_name, -1, -1, range_end - range_start)
+                shards[model_name] = Shard(model_name, -1, -1, range_end - range_start, cur_tp_attr)
         
         return shards
 

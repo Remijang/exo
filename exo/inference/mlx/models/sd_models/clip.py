@@ -7,7 +7,7 @@ from typing import List, Optional
 import mlx.core as mx
 import mlx.nn as nn
 from dataclasses import field, dataclass
-from exo.inference.shard import Shard
+from exo.inference.shard import Shard, TpAttr
 from exo.inference.mlx.models.base import IdentityBlock 
 
 _ACTIVATIONS = {"quick_gelu": nn.gelu_fast_approx, "gelu": nn.gelu}
@@ -39,7 +39,7 @@ class CLIPTextModelConfig:
 
 @dataclass
 class ModelArgs(CLIPTextModelConfig):
-    shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
+    shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0, TpAttr(0, 1)))
     weight_files: List[str] = field(default_factory=lambda: [])
     def __post_init__(self):
         if isinstance(self.shard, dict):

@@ -65,6 +65,7 @@ class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
       start_layer=request.shard.start_layer,
       end_layer=request.shard.end_layer,
       n_layers=request.shard.n_layers,
+      tp_attr=request.shard.tp_attr,
     )
     prompt = request.prompt
     request_id = request.request_id
@@ -80,6 +81,7 @@ class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
       start_layer=request.shard.start_layer,
       end_layer=request.shard.end_layer,
       n_layers=request.shard.n_layers,
+      tp_attr=request.shard.tp_attr,
     )
     tensor = np.frombuffer(request.tensor.tensor_data, dtype=np.dtype(request.tensor.dtype)).reshape(request.tensor.shape)
     request_id = request.request_id
@@ -97,6 +99,7 @@ class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
       start_layer=request.shard.start_layer,
       end_layer=request.shard.end_layer,
       n_layers=request.shard.n_layers,
+      tp_attr=request.shard.tp_attr,
     )
     example = np.frombuffer(request.example.tensor_data, dtype=np.dtype(request.example.dtype)).reshape(request.example.shape)
     target = np.frombuffer(request.target.tensor_data, dtype=np.dtype(request.target.dtype)).reshape(request.target.shape)

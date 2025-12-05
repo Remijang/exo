@@ -6,13 +6,13 @@ import mlx.nn as nn
 from mlx_lm.models.base import create_attention_mask
 from mlx_lm.models.llama import TransformerBlock, ModelArgs
 
-from ...shard import Shard
+from ...shard import Shard, TpAttr
 from .base import IdentityBlock
 
 
 @dataclass
 class ModelArgs(ModelArgs):
-  shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
+  shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0, TpAttr(0, 1)))
 
   def __post_init__(self):
     super().__post_init__()  # Ensure parent initializations are respected

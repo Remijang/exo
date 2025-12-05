@@ -12,11 +12,17 @@ service NodeService {
   rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse) {}
 }
 
+message TpAttr {
+  int32 node_rank = 1;
+  int32 world_size = 2;
+}
+
 message Shard {
   string model_id = 1;
   int32 start_layer = 2;
   int32 end_layer = 3;
   int32 n_layers = 4;
+  TpAttr tp_attr = 5;
 }
 
 message PromptRequest {

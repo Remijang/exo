@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict
 from dataclasses import dataclass
 from .topology import Topology
-from exo.inference.shard import Shard
+from exo.inference.shard import Shard, TpAttr
 from exo.topology.device_capabilities import device_capabilities
 import asyncio
 
@@ -13,6 +13,7 @@ class Partition:
   node_id: str
   start: float
   end: float
+  tp_attr: TpAttr
 
 
 class PartitioningStrategy(ABC):
@@ -26,6 +27,7 @@ def map_partitions_to_shards(partitions: List[Partition], num_layers: int, model
   for i, partition in enumerate(partitions):
     start_layer = int(partition.start*num_layers)
     end_layer = int(partition.end*num_layers) - 1
+    cur_tp_attr = partition.tp_attr
 
     # Ensure the last partition covers up to num_layers - 1
     if i == len(partitions) - 1:
@@ -33,10 +35,10 @@ def map_partitions_to_shards(partitions: List[Partition], num_layers: int, model
 
     # Ensure no empty shards
     if start_layer <= end_layer:
-      shards.append(Shard(model_id, start_layer, end_layer, num_layers))
+      shards.append(Shard(model_id, start_layer, end_layer, num_layers, cur_tp_attr))
 
   # Ensure full coverage
   if shards and shards[-1].end_layer < num_layers - 1:
-    shards[-1] = Shard(model_id, shards[-1].start_layer, num_layers - 1, num_layers)
+    shards[-1] = Shard(model_id, shards[-1].start_layer, num_layers - 1, num_layers, shards[-1].tp_attr)
 
   return shards

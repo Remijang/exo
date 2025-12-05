@@ -8,7 +8,7 @@ from typing import Optional, Dict, Union
 import mlx.core as mx
 import mlx.nn as nn
 from mlx_lm.models.base import BaseModelArgs, KVCache
-from exo.inference.shard import Shard
+from exo.inference.shard import Shard, TpAttr
 from .base import IdentityBlock
 import numpy as np
 
@@ -460,7 +460,7 @@ class LlaVAConfig(BaseModelArgs):
 
 @dataclass
 class ModelArgs(LlaVAConfig):
-  shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
+  shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0, TpAttr(0, 1)))
 
   def __post_init__(self):
     if isinstance(self.shard, dict):

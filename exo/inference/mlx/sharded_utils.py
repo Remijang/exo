@@ -22,7 +22,7 @@ from mlx_lm.tokenizer_utils import load_tokenizer, TokenizerWrapper
 
 from exo import DEBUG
 from exo.inference.tokenizers import resolve_tokenizer
-from ..shard import Shard
+from ..shard import Shard, TpAttr
 
 
 class ModelNotFoundError(Exception):
@@ -110,6 +110,7 @@ def load_model_shard(
     "start_layer": shard.start_layer,
     "end_layer": shard.end_layer,
     "n_layers": shard.n_layers,
+    "tp_attr": shard.tp_attr,
   }
 
   weight_files = glob.glob(str(model_path/"model*.safetensors"))
@@ -123,7 +124,7 @@ def load_model_shard(
   class ShardedModel(model_class):
     def __init__(self, args):
       super().__init__(args)
-      self.shard = Shard(args.shard.model_id, args.shard.start_layer, args.shard.end_layer, args.shard.n_layers)
+      self.shard = Shard(args.shard.model_id, args.shard.start_layer, args.shard.end_layer, args.shard.n_layers, args.shard.tp_attr)
 
     def __call__(self, x, *args, **kwargs):
       y = super().__call__(x, *args, **kwargs)
