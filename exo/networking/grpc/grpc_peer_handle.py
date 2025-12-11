@@ -106,7 +106,7 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=TpAttr(
+        tp_attr=node_service_pb2.TpAttr(
           node_rank=shard.tp_attr.node_rank,
           world_size=shard.tp_attr.world_size,
         ),
@@ -124,7 +124,7 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=TpAttr(
+        tp_attr=node_service_pb2.TpAttr(
           node_rank=shard.tp_attr.node_rank,
           world_size=shard.tp_attr.world_size,
         )
@@ -148,7 +148,7 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=TpAttr(
+        tp_attr=node_service_pb2.TpAttr(
           node_rank=shard.tp_attr.node_rank,
           world_size=shard.tp_attr.world_size,
         ),
@@ -175,7 +175,7 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=TpAttr(
+        tp_attr=node_service_pb2.TpAttr(
           node_rank=shard.tp_attr.node_rank,
           world_size=shard.tp_attr.world_size,
         ),
@@ -222,7 +222,7 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=TpAttr(
+        tp_attr=node_service_pb2.TpAttr(
           node_rank=shard.tp_attr.node_rank,
           world_size=shard.tp_attr.world_size,
         ),
