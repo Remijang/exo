@@ -1,3 +1,4 @@
+from os import getenv
 from tinygrad import Tensor, Variable 
 from collections import OrderedDict
 from typing import List, Optional
