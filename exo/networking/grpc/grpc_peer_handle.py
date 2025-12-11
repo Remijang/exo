@@ -106,7 +106,10 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=shard.tp_attr,
+        tp_attr=TpAttr(
+          node_rank=shard.tp_attr.node_rank,
+          world_size=shard.tp_attr.world_size,
+        ),
       ),
       request_id=request_id,
       inference_state=None if inference_state is None else self.serialize_inference_state(inference_state)
@@ -121,7 +124,10 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=shard.tp_attr,
+        tp_attr=TpAttr(
+          node_rank=shard.tp_attr.node_rank,
+          world_size=shard.tp_attr.world_size,
+        )
       ),
       tensor=node_service_pb2.Tensor(tensor_data=tensor.tobytes(), shape=tensor.shape, dtype=str(tensor.dtype)),
       request_id=request_id,
@@ -142,7 +148,10 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=shard.tp_attr,
+        tp_attr=TpAttr(
+          node_rank=shard.tp_attr.node_rank,
+          world_size=shard.tp_attr.world_size,
+        ),
       ),
       example=node_service_pb2.Tensor(tensor_data=example.tobytes(), shape=example.shape, dtype=str(example.dtype)),
       target=node_service_pb2.Tensor(tensor_data=target.tobytes(), shape=target.shape, dtype=str(target.dtype)),
@@ -166,7 +175,10 @@ class GRPCPeerHandle(PeerHandle):
         start_layer=shard.start_layer,
         end_layer=shard.end_layer,
         n_layers=shard.n_layers,
-        tp_attr=shard.tp_attr,
+        tp_attr=TpAttr(
+          node_rank=shard.tp_attr.node_rank,
+          world_size=shard.tp_attr.world_size,
+        ),
       ),
       tensor=node_service_pb2.Tensor(tensor_data=tensor.tobytes(), shape=tensor.shape, dtype=str(tensor.dtype)),
       request_id=request_id,
@@ -193,14 +205,36 @@ class GRPCPeerHandle(PeerHandle):
         topology.add_edge(node_id, conn.to_id, conn.description)
     return topology
 
-  async def send_result(self, request_id: str, result: List[int], is_finished: bool) -> None:
+  async def send_result(self, request_id, result, is_finished, tensor=None, shard=None):
     await self._ensure_connected()
-    tensor = None
-    if isinstance(result, np.ndarray):
-      tensor = node_service_pb2.Tensor(tensor_data=result.tobytes(), shape=result.shape, dtype=str(result.dtype))
+    tensor_proto = None
+    if isinstance(tensor, np.ndarray):
+      tensor_proto = node_service_pb2.Tensor(
+        tensor_data=tensor.tobytes(),
+        shape=tensor.shape,
+        dtype=str(tensor.dtype),
+      )
       result = []
-    request = node_service_pb2.SendResultRequest(request_id=request_id, result=result, tensor=tensor, is_finished=is_finished)
-    await self.stub.SendResult(request)
+    shard_proto = None
+    if shard:
+      shard_proto = node_service_pb2.Shard(
+        model_id=shard.model_id,
+        start_layer=shard.start_layer,
+        end_layer=shard.end_layer,
+        n_layers=shard.n_layers,
+        tp_attr=TpAttr(
+          node_rank=shard.tp_attr.node_rank,
+          world_size=shard.tp_attr.world_size,
+        ),
+      )
+    req = node_service_pb2.SendResultRequest(
+      request_id=request_id,
+      result=result,
+      tensor=tensor_proto,
+      is_finished=is_finished,
+      shard=shard_proto,
+    )
+    await self.stub.SendResult(req)
 
   async def send_opaque_status(self, request_id: str, status: str) -> None:
     await self._ensure_connected()

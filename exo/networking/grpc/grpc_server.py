@@ -17,6 +17,7 @@ if platform.system().lower() == "darwin" and platform.machine().lower() == "arm6
 else:
   import numpy as mx
 
+from exo.inference.shard import TpAttr, Shard
 
 class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
   def __init__(self, node: Node, host: str, port: int):
@@ -65,7 +66,10 @@ class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
       start_layer=request.shard.start_layer,
       end_layer=request.shard.end_layer,
       n_layers=request.shard.n_layers,
-      tp_attr=request.shard.tp_attr,
+      tp_attr=TpAttr(
+        node_rank=request.shard.tp_attr.node_rank, 
+        world_size=request.shard.tp_attr.world_size
+      ),
     )
     prompt = request.prompt
     request_id = request.request_id
@@ -81,7 +85,10 @@ class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
       start_layer=request.shard.start_layer,
       end_layer=request.shard.end_layer,
       n_layers=request.shard.n_layers,
-      tp_attr=request.shard.tp_attr,
+      tp_attr=TpAttr(
+        node_rank=request.shard.tp_attr.node_rank, 
+        world_size=request.shard.tp_attr.world_size
+      ),
     )
     tensor = np.frombuffer(request.tensor.tensor_data, dtype=np.dtype(request.tensor.dtype)).reshape(request.tensor.shape)
     request_id = request.request_id
@@ -99,7 +106,10 @@ class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
       start_layer=request.shard.start_layer,
       end_layer=request.shard.end_layer,
       n_layers=request.shard.n_layers,
-      tp_attr=request.shard.tp_attr,
+      tp_attr=TpAttr(
+        node_rank=request.shard.tp_attr.node_rank, 
+        world_size=request.shard.tp_attr.world_size
+      ),
     )
     example = np.frombuffer(request.example.tensor_data, dtype=np.dtype(request.example.dtype)).reshape(request.example.shape)
     target = np.frombuffer(request.target.tensor_data, dtype=np.dtype(request.target.dtype)).reshape(request.target.shape)
@@ -138,6 +148,23 @@ class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
     return node_service_pb2.Topology(nodes=nodes, peer_graph=peer_graph)
 
   async def SendResult(self, request, context):
+    shard = Shard(
+      request.shard.model_id,
+      request.shard.start_layer,
+      request.shard.end_layer,
+      request.shard.n_layers,
+      tp_attr=TpAttr(
+        node_rank=request.shard.tp_attr.node_rank, 
+        world_size=request.shard.tp_attr.world_size
+      ),
+    )
+    if shard.tp_attr.world_size > 1 and request.HasField("tensor"):
+      partial = np.frombuffer(request.tensor.tensor_data, dtype=np.dtype(request.tensor.dtype)).reshape(request.tensor.shape)
+      aggregated = self.node.accumulate_tp_partial(request.request_id, shard, partial)
+      if aggregated is None:
+          return node_service_pb2.Empty()
+      await self.node.process_inference_result(shard, aggregated, request.request_id, inference_state=None)
+      return node_service_pb2.Empty()
     request_id = request.request_id
     result = request.result
     is_finished = request.is_finished

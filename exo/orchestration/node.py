@@ -55,7 +55,7 @@ class Node:
     self.topology_inference_engines_pool: List[List[str]] = []
     self.outstanding_requests = {}
 
-    self.tp_partials = {}
+    self.tp_partials: dict[tuple[str, int], dict[int, np.ndarray]] = {}
 
   async def start(self, wait_for_peers: int = 0) -> None:
     self.device_capabilities = await device_capabilities()
@@ -117,7 +117,7 @@ class Node:
   first_token_time = 0
   async def process_inference_result(
     self,
-    shard,
+    shard: Shard,
     result: np.ndarray,
     request_id: Optional[str] = None,
     inference_state: Optional[dict] = None,
@@ -126,7 +126,24 @@ class Node:
       if request_id not in self.buffered_token_output:
         self.buffered_token_output[request_id] = ([], False)
       is_finished = len(self.buffered_token_output[request_id][0]) >= self.max_generate_tokens
-      if shard.is_last_layer() and not is_finished:
+      
+      if shard.tp_attr.world_size > 1 and shard.is_last_layer():
+        coordinator = self.get_tp_coordinator(shard)
+        if coordinator is not None:
+          await coordinator.send_result(
+            request_id,
+            result=[],
+            is_finished=False,
+            tensor=result,
+            shard=shard,
+          )
+          return result
+        aggregated = self.accumulate_tp_partial(request_id, shard, result)
+        if aggregated is None:
+            return result
+        result = aggregated
+      
+      if shard.is_last_layer() and not is_finished:      
         token = await self.inference_engine.sample(result, temp=self.default_sample_temperature)
         await self.inference_engine.ensure_shard(shard)
         self.buffered_token_output[request_id][0].append(token.item())
@@ -422,6 +439,16 @@ class Node:
     target_id = self.partitioning_strategy.partition(self.topology)[target_index].node_id
     next_shard = self.get_current_shard(base_shard, target_index)
     if DEBUG >= 2: print(f"Computed target from: {base_shard} {target_index}, {self.topology}. next shard: {next_shard}")
+
+    if next_shard.tp_attr.world_size > 1:
+      for p, peer in self.get_tp_group(next_shard):
+        tp_shard = Shard(next_shard.model_id, next_shard.start_layer, next_shard.end_layer, next_shard.n_layers, p.tp_attr)
+        if p.node_id == self.id:
+          await self.process_prompt(tp_shard, prompt, request_id, inference_state)
+        else:
+          await peer.send_prompt(tp_shard, prompt, request_id=request_id, inference_state=inference_state)
+      return
+    
     if target_id == self.id:
       await self.process_prompt(next_shard, prompt, request_id, inference_state)
     else:
@@ -443,7 +470,8 @@ class Node:
     target_id = self.partitioning_strategy.partition(self.topology)[target_index].node_id
     next_shard = self.get_current_shard(base_shard, target_index)
     if DEBUG >= 2: print(f"Computed target from: {base_shard} {target_index}, {self.topology}. target shard: {next_shard}")
-    if Shard.tp_attr.world_size > 1:
+
+    if next_shard.tp_attr.world_size > 1:
       for p, peer in self.get_tp_group(next_shard):
         tp_shard = Shard(next_shard.model_id, next_shard.start_layer, next_shard.end_layer, next_shard.n_layers, p.tp_attr)
         if p.node_id == self.id:
@@ -451,6 +479,7 @@ class Node:
         else:
           await peer.send_tensor(tp_shard, tensor, request_id=request_id, inference_state=inference_state)
       return
+    
     if target_id == self.id:
       await self.process_tensor(next_shard, tensor, request_id, inference_state)
     else:
@@ -481,13 +510,14 @@ class Node:
     partitions = self.partitioning_strategy.partition(self.topology)
     ret = []
     for p in partitions:
-      if p.start == shard.start_layer / shard.n_layers \
-        or (p.start <= shard.start_layer / shard.n_layers <= p.end) \
-        and p.tp_attr.world_size == shard.tp_attr.world_size:
-          ret.append(next((peer for peer in self.peers if peer.id() == p.node_id), None))
+      if ((p.start == shard.start_layer / shard.n_layers) \
+        or (p.start <= shard.start_layer / shard.n_layers <= p.end)) \
+        and (p.tp_attr.world_size == shard.tp_attr.world_size):
+          peer = None if p.node_id == self.id else next((pr for pr in self.peers if pr.id() == p.node_id), None)
+          ret.append((p, peer))
     return ret
   
-  def accumulate_tp_partitial(self, request_id: str, shard: Shard, tensor: np.ndarray):
+  def accumulate_tp_partial(self, request_id: str, shard: Shard, tensor: np.ndarray):
     key = (request_id, hash(shard))
     ranks = self.tp_partials.setdefault(key, {})
     ranks[shard.tp_attr.node_rank] = tensor
@@ -497,6 +527,12 @@ class Node:
     full = np.concatenate(ordered, axis=-1)
     del self.tp_partials[key]
     return full
+  
+  def get_tp_coordinator(self, shard: Shard) -> Optional[PeerHandle]:
+    for p, peer in self.get_tp_group(shard):
+        if p.tp_attr.node_rank == 0:
+            return None if p.node_id == self.id else peer
+    return None
 
   async def update_peers(self, wait_for_peers: int = 0) -> bool:
     next_peers = await self.discovery.discover_peers(wait_for_peers)

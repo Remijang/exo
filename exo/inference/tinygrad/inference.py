@@ -115,6 +115,14 @@ class TinygradDynamicShardInferenceEngine(InferenceEngine):
       self.states[request_id].start += x.shape[1]
       return out.numpy()
     output_data = await asyncio.get_running_loop().run_in_executor(self.executor, wrap_infer)
+    
+    if shard.tp_attr.world_size > 1:
+      hidden = output_data.shape[-1]
+      chunk = hidden // shard.tp_attr.world_size
+      start = shard.tp_attr.node_rank * chunk
+      end = (shard.tp_attr.node_rank + 1) * chunk if shard.tp_attr.node_rank < shard.tp_attr.world_size - 1 else hidden
+      output_data = output_data[..., start:end]
+    
     return output_data, inference_state
 
   async def evaluate(self, request_id: str, shard: Shard, inputs, targets, lengths, loss=length_masked_ce_loss):
@@ -146,12 +154,61 @@ class TinygradDynamicShardInferenceEngine(InferenceEngine):
 
     model_path = await self.shard_downloader.ensure_shard(shard, self.__class__.__name__)
 
+    def load_and_prepare(model_path: Path, shard: Shard, model_size: str):
+      linear = nn.Linear
+      model = Transformer(**MODEL_PARAMS[model_size]["args"], linear=linear, max_context=8192, jit=True, shard=shard)
+      if model_path.is_dir():
+        if (model_path/"model.safetensors.index.json").exists(): weights = load(str(model_path/"model.safetensors.index.json"), shard)
+        elif (model_path/"model.safetensors").exists(): weights = load(str(model_path/"model.safetensors"), shard)
+        else: weights = concat_weights([load(str(model_path/f"consolidated.{i:02d}.pth"), shard) for i in range(MODEL_PARAMS[model_size]["files"])])
+      else:
+        weights = load(str(model_path), shard)
+      weights = convert_from_huggingface(weights, model, MODEL_PARAMS[model_size]["args"]["n_heads"], MODEL_PARAMS[model_size]["args"]["n_kv_heads"])
+      weights = fix_bf16(weights)
+      weights = self.slice_tp_weights(weights, shard)
+      with Context(BEAM=0):
+        load_state_dict(model, weights, strict=False, consume=False)
+        model = TransformerShard(shard, model)
+      tok_path = str(model_path if model_path.is_dir() else model_path.parent)
+      return model, tok_path
+
+    
     if self.shard != shard:
       loop = asyncio.get_running_loop()
       parameters = "1B" if "1b" in shard.model_id.lower() else "3B" if "3b" in shard.model_id.lower() else "8B" if "8b" in shard.model_id.lower() else "70B"
-      model_shard = await loop.run_in_executor(self.executor, build_transformer, model_path, shard, parameters)
-
-      tokenizer_path = str((model_path if model_path.is_dir() else model_path.parent))
+      model_shard, tokenizer_path = await loop.run_in_executor(self.executor, load_and_prepare, model_path, shard, parameters)
       self.tokenizer = await resolve_tokenizer(tokenizer_path)
       self.shard = shard
       self.model = model_shard
+
+  def slice_tp_weights(self, weights, shard):
+      rank, world = shard.tp_attr.node_rank, shard.tp_attr.world_size
+      if world <= 1:
+          return weights
+      def slice_linear(W):
+          chunk = W.shape[1] // world
+          start = rank * chunk
+          end = (rank + 1) * chunk if rank < world - 1 else W.shape[1]
+          return W[:, start:end]
+      for k in ["wq", "wk", "wv", "wo", "up_proj", "down_proj", "gate_proj"]:
+          if k in weights:
+              weights[k] = slice_linear(weights[k])
+      return weights
+
+  async def infer_prompt(self, request_id: str, shard: Shard, prompt: str, inference_state: Optional[dict] = None):
+    await self.ensure_shard(shard)
+    def wrap_infer():
+      tokens = np.array(self.tokenizer.encode(prompt), dtype=np.int64)
+      x = Tensor(tokens[None, :])
+      h = self.model.embed(x)
+      state = self.poll_state(h, request_id)
+      out = self.model.forward(h, **state)
+      return out.numpy()
+    output_data = await asyncio.get_running_loop().run_in_executor(self.executor, wrap_infer)
+    if shard.tp_attr.world_size > 1:
+      hidden = output_data.shape[-1]
+      chunk = hidden // shard.tp_attr.world_size
+      start = shard.tp_attr.node_rank * chunk
+      end = (shard.tp_attr.node_rank + 1) * chunk if shard.tp_attr.node_rank < shard.tp_attr.world_size - 1 else hidden
+      output_data = output_data[..., start:end]
+    return output_data, inference_state
