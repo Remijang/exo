@@ -7,7 +7,7 @@ from . import node_service_pb2
 from . import node_service_pb2_grpc
 
 from ..peer_handle import PeerHandle
-from exo.inference.shard import Shard
+from exo.inference.shard import Shard, TpAttr
 from exo.topology.topology import Topology
 from exo.topology.device_capabilities import DeviceCapabilities, DeviceFlops
 from exo.helpers import DEBUG
